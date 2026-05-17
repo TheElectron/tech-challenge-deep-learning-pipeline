@@ -1,0 +1,82 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # MLflow tracking server — experiment browser at http://localhost:5000
+  # ---------------------------------------------------------------------------
+  mlflow:
+    image: python:3.13-slim
+    working_dir: /mlflow
+    command: >
+      sh -c "pip install 'mlflow>=2.13' -q &&
+             mlflow server
+               --backend-store-uri sqlite:///mlruns.db
+               --default-artifact-root ./mlruns
+               --host 0.0.0.0
+               --port 5000"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns.db:/mlflow/mlruns.db
+      - ./mlruns:/mlflow/mlruns
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # Prediction API — http://localhost:8000  |  docs at /docs
+  # ---------------------------------------------------------------------------
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_DIR: /app/models
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data          # predictions_log.jsonl + reference_predictions.csv
+      - ./reports:/app/reports    # drift HTML reports
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+  # ---------------------------------------------------------------------------
+  # Prometheus — metrics store at http://localhost:9090
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    depends_on:
+      - api
+
+  # ---------------------------------------------------------------------------
+  # Grafana — dashboards at http://localhost:3000  (admin / admin)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.0.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Data — downloaded and generated at runtime; not versioned
+data/raw/*
+data/processed/*
+data/predictions_log.jsonl
+data/reference_predictions.csv
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# MLflow experiment artifacts
+mlruns/
+mlruns.db
+
+# Exported model artifacts
+models/champion/
+models/champion_meta.json
+!models/.gitkeep
+
+# Generated reports
+reports/figures/*
+reports/comparison.json
+reports/drift/
+!reports/figures/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.*

@@ -1,0 +1,31 @@
+data:
+  # Tickers to include in the dataset. Add/remove freely.
+  # Brazilian stocks require the .SA suffix (e.g. PETR4.SA).
+  tickers:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - PETR4.SA
+    - VALE3.SA
+  start_date: "2018-01-01"
+  end_date: "2024-12-31"
+  # Input features fed to the LSTM. Target is always Close.
+  features:
+    - Close
+  window_size: 60          # number of past trading days used to predict the next one
+  split_ratios:            # must sum to 1.0; order: train / val / test
+    - 0.8
+    - 0.1
+    - 0.1
+
+model:
+  training:
+    epochs: 100
+    batch_size: 64
+    lr: 0.001
+    patience: 15
+
+mlflow:
+  tracking_uri: "sqlite:///mlruns.db"
+  experiment_name: "lstm-stock-prediction"

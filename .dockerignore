@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Data and artifacts (mounted as volumes at runtime)
+data/
+mlruns/
+mlruns.db
+models/
+reports/
+notebooks/
+
+# Project files not needed in the image
+.git/
+.gitignore
+*.pdf
+*.md
+pyproject.toml
+scripts/
+# config/ is copied explicitly in Dockerfile — do NOT exclude it
