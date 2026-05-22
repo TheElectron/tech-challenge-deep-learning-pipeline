@@ -56,18 +56,18 @@ Extração de dados  →  Treinamento, avaliação e registro dos modelos  →  
 ```
 
 ```bash
-# 1. Clonar o repositório
+# Clonar o repositório
 git clone https://github.com/TheElectron/tech-challenge-deep-learning-pipeline.git
 
 cd tech-challenge-deep-learning-pipeline
 
-# 2. Criar e ativar o ambiente virtual
+# Criar e ativar o ambiente virtual
 python3 -m venv .venv
 
 source .venv/bin/activate
 # venv\Scripts\activate No Windows
 
-# 3. Instalar todas as dependências
+# Instalar todas as dependências
 pip install -e ".[dev]"
 
 # Executar o pipeline de dados
