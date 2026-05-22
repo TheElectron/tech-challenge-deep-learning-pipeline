@@ -15,9 +15,9 @@ data:
     - Close
   window_size: 60          # number of past trading days used to predict the next one
   split_ratios:            # must sum to 1.0; order: train / val / test
-    - 0.8
-    - 0.1
-    - 0.1
+    - 0.7
+    - 0.15
+    - 0.15
 
 model:
   training:

@@ -15,12 +15,13 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 import src.config as cfg
 from src.api import state as app_state
 from src.api.routes import router
+from src.api.ui import HTML as _UI_HTML
 from src.monitoring.metrics import MODEL_RMSE, REQUEST_COUNT, REQUEST_LATENCY
 
 
@@ -69,6 +70,12 @@ async def prometheus_middleware(request: Request, call_next):
 def metrics() -> Response:
     """Prometheus scrape endpoint."""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def ui() -> HTMLResponse:
+    """Visual dashboard — human-friendly interface to the prediction API."""
+    return HTMLResponse(_UI_HTML)
 
 
 app.include_router(router)
