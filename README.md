@@ -1,291 +1,243 @@
-# LSTM Stock Price Prediction Pipeline
+# 📈 Previsão do Preço de Ações com LSTM | Deep Learning Pipeline
 
-End-to-end deep learning pipeline to predict stock closing prices using an LSTM neural network, served via a REST API with model versioning and production monitoring.
-
----
-
-## Table of Contents
-
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Roadmap](#roadmap)
-  - [Phase 1 — Data Pipeline](#phase-1--data-pipeline)
-  - [Phase 2 — LSTM Model](#phase-2--lstm-model)
-  - [Phase 3 — Model Registry & Versioning](#phase-3--model-registry--versioning)
-  - [Phase 4 — REST API](#phase-4--rest-api)
-  - [Phase 5 — Monitoring](#phase-5--monitoring)
-- [Getting Started](#getting-started)
-- [Project Structure](#project-structure)
+Este projeto implementa um pipeline completo de *deep learning* para prever o preço de fechamento de ações utilizando uma rede neural LSTM. \
+O pipeline abrange desde a coleta de dados brutos até a disponibilização do modelo em produção, passando por versionamento, *serving* via API REST e monitoramento em tempo real.\
+Desenvolvido como entrega final do **Tech Challenge #04** da Pós-Graduação em Machine Learning Engineering da FIAP.
 
 ---
 
-## Architecture
+## 📂 Estrutura de Diretórios
 
 ```
 tech-challenge-deep-learning-pipeline/
-├── data/                    # raw & processed datasets
+├── config/                  # Configurações globais (tickers, janela, splits)
+├── data/                    # Dados brutos e processados (gerado automaticamente)
+├── docker/                  # Configurações de Prometheus e Grafana
+├── models/                  # Modelo campeão exportado (gerado pelo script)
+├── notebooks/               # Análises exploratórias
+├── reports/                 # Figuras, métricas e relatórios de drift
+├── scripts/                 # Scripts utilitários de suporte
 ├── src/
-│   ├── data/               # ingestion + preprocessing
-│   ├── model/              # LSTM definition, training, evaluation
-│   ├── api/                # FastAPI application
-│   └── monitoring/         # metrics & drift detection
-├── mlruns/                 # MLflow experiment tracking (auto-generated)
-├── notebooks/              # exploratory analysis
-├── docker/
+│   ├── data/               # Ingestão e pré-processamento
+│   ├── model/              # Definição, treino, avaliação e registro do LSTM
+│   ├── api/                # Aplicação FastAPI
+│   └── monitoring/         # Métricas Prometheus e detecção de drift
 ├── docker-compose.yml
+├── Dockerfile
 ├── pyproject.toml
 └── README.md
 ```
 
 ---
 
-## Tech Stack
+## 🛠️ Tecnologias
 
-| Concern | Choice |
+| Categoria | Ferramentas |
 |---|---|
-| Language | Python 3.13 |
-| ML | PyTorch |
-| Data | `yfinance`, `pandas`, `scikit-learn` |
-| Experiment tracking & registry | MLflow |
+| Linguagem | Python 3.13 |
+| Dados & ML | `PyTorch`, `yfinance`, `pandas`, `scikit-learn` |
 | API | FastAPI + Uvicorn |
-| Monitoring | Prometheus, Grafana, Evidently AI |
-| Containerization | Docker + Docker Compose |
-| Dependency management | `pyproject.toml` + `pip` (venv) |
+| Rastreamento & Registro de Modelos | MLflow |
+| Monitoramento | Prometheus, Grafana, Evidently AI |
+| Containerização | Docker + Docker Compose |
+| Gerenciamento de Dependências | `pyproject.toml` + `pip` (venv) |
 
 ---
 
-## Roadmap
+## 🚀 Instalação e Execução
 
-### Phase 1 — Data Pipeline ✅
+### Pré-requisitos
 
-**Goal:** reproducible, versioned dataset capable of training a model that predicts closing prices across different assets.
-
-#### Design decisions
-
-- **Multi-asset by default** — any number of tickers can be listed in `config/config.yaml`; the pipeline downloads, preprocesses, and saves each one independently.
-- **Per-asset MinMaxScaler** — each asset has its own scaler fitted exclusively on the training portion, preventing any future price information from leaking into validation or test windows. The scaler is persisted to disk so predictions can be denormalized at inference time without knowing the original price range.
-- **Chronological split (80 / 10 / 10)** — data is split in time order, never shuffled. Sequences are built within each split independently so no window ever straddles a boundary.
-- **Sliding-window sequences** — a configurable lookback window (default: 60 trading days) is used to produce `(X, y)` pairs where `X` is the window of scaled feature values and `y` is the next day's scaled Close price.
-- **MLflow tracking** — every pipeline run logs parameters (tickers, dates, window size, split ratios), per-asset sample counts, and lightweight artifacts (metadata JSON + per-asset scalers).
-
-#### Key files
-
-| File | Responsibility |
-|---|---|
-| `config/config.yaml` | Tickers, date range, feature list, window size, split ratios, MLflow settings |
-| `src/data/ingest.py` | Download OHLCV via `yf.Ticker.history()`; save one CSV per asset to `data/raw/` |
-| `src/data/preprocess.py` | Chronological split → fit scaler on train → scale all splits → generate sequences → save `.npy` + `scaler.pkl` |
-| `src/data/pipeline.py` | Orchestrator: runs ingest → preprocess for all tickers, logs to MLflow, writes `data/processed/metadata.json` |
-
-#### Output structure
+- Python 3.13+
+- Docker e Docker Compose
 
 ```
-data/
-├── raw/
-│   ├── AAPL.csv
-│   ├── PETR4.SA.csv
-│   └── ...
-└── processed/
-    ├── metadata.json          # window_size, features, split_ratios, per-ticker stats
-    ├── AAPL/
-    │   ├── X_train.npy        # shape (N, 60, 1)
-    │   ├── y_train.npy        # shape (N, 1)
-    │   ├── X_val.npy
-    │   ├── y_val.npy
-    │   ├── X_test.npy
-    │   ├── y_test.npy
-    │   └── scaler.pkl         # per-asset MinMaxScaler
-    └── PETR4.SA/
-        └── ...
+Extração de dados  →  Treinamento, avaliação e registro dos modelos  →  API e Monitoramento
 ```
-
-#### Running the pipeline
 
 ```bash
-# activate the virtual environment first
-source .venv/bin/activate
+# 1. Clonar o repositório
+git clone https://github.com/TheElectron/tech-challenge-deep-learning-pipeline.git
 
-# run with settings from config/config.yaml
+cd tech-challenge-deep-learning-pipeline
+
+# 2. Criar e ativar o ambiente virtual
+python3 -m venv .venv
+
+source .venv/bin/activate
+# venv\Scripts\activate No Windows
+
+# 3. Instalar todas as dependências
+pip install -e ".[dev]"
+
+# Executar o pipeline de dados
 python -m src.data.pipeline
-```
 
----
-
-### Phase 2 — LSTM Model ✅
-
-**Goal:** trained model with rigorous evaluation across two candidate architectures.
-
-#### Configurations evaluated
-
-| | Config A — StackedLSTM | Config B — AttentionLSTM |
-|---|---|---|
-| Architecture | LSTM(128) → Dropout → LSTM(64) → Dropout → Linear(1) | LSTM(128, 2 layers) → Multi-Head Attention (4 heads) + residual + LayerNorm → Linear(64) → Linear(1) |
-| Trainable params | ~100 k | ~350 k |
-| Strength | Proven sequential pattern capture; data-efficient | Explicit per-step weighting; interpretable attention maps |
-| Risk | May miss non-local dependencies in very long sequences | Overfits with limited data; attention overhead on short windows |
-
-#### Results on AAPL test set
-
-| Model | RMSE | MAE | MAPE | R² |
-|---|---|---|---|---|
-| **StackedLSTM** | **4.2753** | **3.5131** | **1.89%** | **0.5656** |
-| AttentionLSTM | 4.6133 | 4.1708 | 2.22% | 0.4942 |
-
-#### Recommended: StackedLSTM
-
-StackedLSTM outperforms AttentionLSTM on every metric. The reasons are structural:
-
-1. **Limited training data** — ~744 samples per asset (≈4 000 across all assets). Config B's 3.5× parameter count is a significant overfitting risk that dropout alone cannot absorb.
-2. **Short sequences reduce attention's advantage** — multi-head attention is most beneficial on sequences > 200 steps where only a sparse subset of positions is informative. A 60-step window is short enough for the LSTM hidden state to carry all relevant context.
-3. **Per-asset normalisation already compresses scale** — inputs are already in [0, 1] per asset, so the second LSTM's compression step is sufficient without an explicit weighting mechanism.
-4. **Generalisation across assets** — a simpler inductive bias generalises better across assets with very different volatility profiles (e.g. AAPL vs PETR4.SA).
-5. **Production cost** — 3.5× fewer parameters → smaller artifacts, faster inference, no accuracy penalty.
-
-> AttentionLSTM would be preferred with sequences > 200 steps, 10× more training data (minute-level or 50+ assets), or when attention interpretability is a requirement.
-
-#### Training details
-
-| Hyperparameter | Value |
-|---|---|
-| Optimizer | Adam |
-| Loss | MSE |
-| Learning rate | 0.001 with ReduceLROnPlateau (×0.5, patience=5) |
-| Gradient clipping | max_norm=1.0 |
-| Early stopping | patience=15 on validation loss |
-| Batch size | 64 |
-| Training strategy | Universal model — all assets concatenated into one training set |
-
-#### Key files
-
-| File | Responsibility |
-|---|---|
-| `src/model/lstm.py` | `StackedLSTM` and `AttentionLSTM` model definitions |
-| `src/model/dataset.py` | `StockDataset` — wraps numpy arrays as a PyTorch Dataset |
-| `src/model/train.py` | Training loop, early stopping, MLflow logging, model serialisation |
-| `src/model/evaluate.py` | RMSE, MAE, MAPE, R² computation; actual-vs-predicted plots |
-| `src/model/pipeline.py` | Trains both configs, evaluates on test set, prints comparison table |
-
-#### Running the model pipeline
-
-```bash
-source .venv/bin/activate
-
-# Train both configs, evaluate, and compare
+# Executar o pipeline de treino, avaliação e registro dos modelos
 python -m src.model.pipeline
+
+# Cria o dataset de referência
+python scripts/build_reference.py
+
+# Exporta o melhor modelo para a pasta /models
+python scripts/export_champion.py   
+
+# Inicializa os containers
+docker compose up --build
+
 ```
 
-Outputs written to:
-- `reports/figures/` — actual vs predicted plots per model per ticker
-- `reports/comparison.json` — metrics for all models and tickers
-- MLflow — every run tracked at `sqlite:///mlruns.db`
+| Serviços | Endereços |
+|---|---|
+| API | http://localhost:8000, http://localhost:8000/docs, http://localhost:8000/metrics |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000  (usuário: admin / senha: admin)|
+| MLflow UI | http://localhost:5000 |
 
 ---
 
-### Phase 3 — Model Registry & Versioning ✅
+## ⚙️ Detalhes de Implementação
 
-**Goal:** every trained model is versioned, tagged, and automatically promoted or demoted based on test performance.
+### 💾 Pipeline de Dados
 
-#### What is the Model Registry?
+**Objetivo:** Gerar um dataset reprodutível e versionado, capaz de treinar um modelo que prevê o preço de fechamento de diferentes ativos.
 
-Without a registry, a trained model is just a file on disk — there is no answer to "which model is currently in production?" or "how do I roll back?". The **MLflow Model Registry** is a versioned catalog of model artifacts with a managed lifecycle on top.
+#### Arquivos principais
 
-MLflow has three layers:
+| Arquivo | Responsabilidade |
+|---|---|
+| `config/config.yaml` | Tickers, intervalo de datas, lista de features, tamanho da janela, proporções do split, configurações do MLflow |
+| `src/data/ingest.py` | Download de dados OHLCV via `yf.Ticker.history()`; salva um CSV por ativo em `data/raw/` |
+| `src/data/preprocess.py` | Divisão cronológica → ajuste do scaler no treino → escalonamento de todos os splits → geração de sequências → salvamento de `.npy` + `scaler.pkl` |
+| `src/data/pipeline.py` | Orquestrador: executa ingestão → pré-processamento para todos os tickers, registra no MLflow e escreve `data/processed/metadata.json` |
 
-```
-Experiment  →  groups related training runs
-    Run     →  one training execution: params + metrics + artifacts (model file)
- Registry   →  named, versioned model pulled from a run's artifact store
-```
+- **Multi-ativo por padrão** — qualquer número de tickers pode ser listado em `config/config.yaml`; o pipeline faz download, pré-processa e salva cada ativo de forma independente.
+- **MinMaxScaler por ativo** — cada ativo possui seu próprio scaler ajustado exclusivamente na porção de treino, evitando vazamento de informações futuras para as janelas de validação e teste. O scaler é persistido em disco para que as predições possam ser desnormalizadas no momento de inferência.
+- **Divisão cronológica (80 / 10 / 10)** — os dados são divididos em ordem temporal, sem embaralhamento. As sequências são construídas dentro de cada split de forma independente, de modo que nenhuma janela cruze uma fronteira.
+- **Sequências com janela deslizante** — uma janela de lookback configurável (padrão: 60 dias de negociação) gera pares `(X, y)`, onde `X` é a janela de valores escalados e `y` é o preço de fechamento escalado do dia seguinte.
+- **Rastreamento MLflow** — cada execução do pipeline registra parâmetros (tickers, datas, tamanho da janela, proporções do split), contagens de amostras por ativo e artefatos leves (JSON de metadados e scalers por ativo).
 
-#### Lifecycle and aliases
+---
 
-Every training run registers a new **version** (v1, v2, v3 …). Versions are permanent — nothing is deleted; instead, named **aliases** act as pointers to whichever version is currently relevant:
+### 💻 Modelos
+
+**Objetivo:** Treinar diferentes modelos com avaliação rigorosa. Todos modelos treinados são versionados e promovidos ou rebaixados automaticamente com base na performance no conjunto de teste.
+
+#### Configurações dos modelos
+
+| | StackedLSTM | AttentionLSTM |
+|---|---|---|
+| Arquitetura | LSTM(128) → Dropout → LSTM(64) → Dropout → Linear(1) | LSTM(128, 2 camadas) → Atenção Multi-Cabeça (4 cabeças) + residual + LayerNorm → Linear(64) → Linear(1) |
+| Parâmetros treináveis | ~100 k | ~350 k |
+| Vantagem | Captura comprovada de padrões sequenciais; eficiente com poucos dados | Ponderação explícita por passo; mapas de atenção interpretáveis |
+| Risco | Pode perder dependências não-locais em sequências muito longas | Overfitting com dados limitados; overhead de atenção em janelas curtas |
+
+#### Detalhes de treinamento
+
+| Hiperparâmetro | Valor |
+|---|---|
+| Otimizador | Adam |
+| Função de perda | MSE |
+| Taxa de aprendizado | 0,001 com ReduceLROnPlateau (×0,5, patience=5) |
+| Clipping de gradiente | max_norm=1,0 |
+| Early stopping | patience=15 na perda de validação |
+| Tamanho do batch | 64 |
+| Estratégia de treino | Modelo universal — todos os ativos concatenados em um único conjunto de treino |
+
+#### Resultados no conjunto de teste — AAPL
+
+| Modelo | RMSE | MAE | MAPE | R² |
+|---|---|---|---|---|
+| **StackedLSTM** | **4.2753** | **3.5131** | **1,89%** | **0.5656** |
+| AttentionLSTM | 4.6133 | 4.1708 | 2,22% | 0.4942 |
+
+#### Configuração Recomendada: StackedLSTM
+
+O StackedLSTM supera o AttentionLSTM em todas as métricas. Os motivos são estruturais:
+
+1. **Dados de treino limitados** — ~744 amostras por ativo (~4.000 no total). O número 3,5× maior de parâmetros da Config B representa risco significativo de overfitting que o dropout sozinho não absorve.
+2. **Sequências curtas reduzem a vantagem da atenção** — a atenção multi-cabeça é mais benéfica em sequências com mais de 200 passos, onde apenas um subconjunto esparso de posições é informativo. Uma janela de 60 passos é curta o suficiente para que o estado oculto do LSTM carregue todo o contexto relevante.
+3. **Normalização por ativo já comprime a escala** — entradas já estão em [0, 1] por ativo, tornando o passo de compressão do segundo LSTM suficiente sem necessidade de mecanismo explícito de ponderação.
+4. **Generalização entre ativos** — um viés indutivo mais simples generaliza melhor entre ativos com perfis de volatilidade muito diferentes (ex.: AAPL vs PETR4.SA).
+5. **Custo em produção** — 3,5× menos parâmetros → artefatos menores, inferência mais rápida, sem penalidade de acurácia.
+
+> O AttentionLSTM seria preferível com sequências acima de 200 passos, 10× mais dados de treino (dados em minutos ou 50+ ativos), ou quando a interpretabilidade da atenção for um requisito.
+
+#### Arquivos principais
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `src/model/lstm.py` | Definições dos modelos `StackedLSTM` e `AttentionLSTM` |
+| `src/model/dataset.py` | `StockDataset` — encapsula arrays numpy como PyTorch Dataset |
+| `src/model/train.py` | Loop de treino, early stopping, registro MLflow, serialização do modelo |
+| `src/model/evaluate.py` | Cálculo de RMSE, MAE, MAPE, R²; gráficos real vs. predito |
+| `src/model/pipeline.py` | Treina ambas as configurações, avalia no conjunto de teste e exibe tabela comparativa |
+
+#### Ciclo de vida
+
+Cada execução de treino registra uma nova **versão** (v1, v2, v3…). As versões são permanentes — nada é deletado; em vez disso, **aliases** nomeados apontam para a versão atualmente relevante:
 
 ```
 lstm-stock-predictor
-  ├── v1  ← @champion    (best RMSE seen so far → used by the API)
-  └── v2  ← @challenger  (latest model that did NOT beat the champion)
+  ├── v1  ← @champion    (melhor RMSE registrado → utilizado pela API)
+  └── v2  ← @challenger  (último modelo que NÃO superou o champion)
 ```
 
-The API always loads `models:/lstm-stock-predictor@champion`. When a new model beats the champion, only the alias moves — the API picks it up on next restart with zero code changes.
+A API sempre carrega `models:/lstm-stock-predictor@champion`. Quando um novo modelo supera o champion, apenas o alias é movido — a API passa a servir o novo modelo no próximo restart, sem nenhuma mudança no código.
 
-#### Promotion logic
+#### Lógica de promoção
 
 ```
-train → evaluate → log mean_test_rmse → register version
-                                              │
-                        ┌─────────────────────┴──────────────────────┐
-                        │     compare RMSE with @champion             │
-                        └─────────────────────┬──────────────────────┘
-                               │                           │
-                       new < champion               new ≥ champion
-                       old champion → @challenger   new version → @challenger
-                       new version  → @champion     @champion unchanged
+treino → avaliação → registrar mean_test_rmse → registrar versão
+                                                      │
+                          ┌───────────────────────────┴──────────────────────────┐
+                          │     comparar RMSE com @champion                       │
+                          └───────────────────────────┬──────────────────────────┘
+                                 │                                │
+                         novo < champion                  novo ≥ champion
+                         champion antigo → @challenger    nova versão → @challenger
+                         nova versão    → @champion       @champion inalterado
 ```
 
-#### Current registry state
+#### Estado atual do registry
 
-| Version | Model type | mean_test_rmse | Alias |
+| Versão | Tipo de modelo | mean_test_rmse | Alias |
 |---|---|---|---|
 | v1 | stacked_lstm | 3.6475 | **@champion** |
 | v2 | attention_lstm | 8.1692 | @challenger |
 
-#### Key files
-
-| File | Responsibility |
-|---|---|
-| `src/model/registry.py` | `register(run_id)` — versions, tags, and promotes the model; `load_champion()` — loads `@champion` from the registry |
-| `src/model/pipeline.py` | Logs `mean_test_rmse`, captures `run_id`, calls `registry.register()` after each run |
-
-#### Loading the champion elsewhere
-
-```python
-from src.model.registry import load_champion
-
-model = load_champion()   # loads models:/lstm-stock-predictor@champion
-```
-
-#### Running the registry pipeline
-
-```bash
-source .venv/bin/activate
-
-# Train, evaluate, register, and promote automatically
-python -m src.model.pipeline
-```
-
 ---
 
-### Phase 4 — REST API ✅
+### 📉 API REST
 
-**Goal:** production-grade inference endpoint that serves the `@champion` model from the MLflow registry.
+**Objetivo:** Disponibilizar o modelo `@champion` para o usuário final.
 
-#### Design decisions
+#### Decisões de design
 
-- **Model loaded once at startup** via FastAPI's `lifespan` hook — no per-request cold starts.
-- **Universal inference** — the API accepts any ticker; normalization is done on-the-fly using a MinMaxScaler fitted on the provided input window. This means the API works for any asset without needing a pre-fitted scaler stored on disk.
-- **Registry-backed** — the API always serves the `@champion` alias. Promoting a new model in the registry is enough to update what the API serves on next restart; no code changes needed.
+- **Modelo carregado uma única vez na inicialização** via hook `lifespan` do FastAPI — sem cold starts por requisição.
+- **Inferência universal** — a API aceita qualquer ticker; a normalização é feita dinamicamente usando um MinMaxScaler ajustado na janela de entrada fornecida. Isso significa que a API funciona para qualquer ativo sem necessitar de um scaler pré-ajustado em disco.
+- **Respaldada pelo registry** — a API sempre serve o alias `@champion`. Promover um novo modelo no registry é suficiente para atualizar o que a API serve no próximo restart; nenhuma mudança de código é necessária.
 
 #### Endpoints
 
-| Method | Path | Description |
+| Método | Caminho | Descrição |
 |---|---|---|
-| `GET` | `/health` | Liveness check — confirms API is up and model is loaded |
-| `GET` | `/model/info` | Registry metadata for the loaded champion (version, type, RMSE) |
-| `POST` | `/predict` | Predict the next closing price given ≥ 60 historical closes |
-| `GET` | `/docs` | Swagger UI (auto-generated) |
-| `GET` | `/redoc` | ReDoc (auto-generated) |
+| `GET` | `/health` | Verificação de liveness — confirma que a API está no ar e o modelo está carregado |
+| `GET` | `/model/info` | Metadados do registry para o champion carregado (versão, tipo, RMSE) |
+| `POST` | `/predict` | Prediz o próximo preço de fechamento dado ≥ 60 fechamentos históricos |
+| `GET` | `/docs` | Swagger UI (gerado automaticamente) |
+| `GET` | `/redoc` | ReDoc (gerado automaticamente) |
 
-#### Request / Response
+#### Requisição e Resposta
 
 ```json
 // POST /predict
 {
   "ticker": "AAPL",
-  "close_prices": [176.38, 177.31, 175.73, ..., 168.16]  // ≥ 60 values
+  "close_prices": [176.38, 177.31, 175.73, ..., 168.16]  // ≥ 60 valores
 }
 
-// Response
+// Resposta
 {
   "ticker": "AAPL",
   "predicted_close": 171.694,
@@ -295,238 +247,92 @@ python -m src.model.pipeline
 }
 ```
 
-#### Key files
-
-| File | Responsibility |
-|---|---|
-| `src/api/main.py` | FastAPI app definition and `lifespan` startup hook |
-| `src/api/state.py` | Module-level singleton — loads and holds the champion model and its metadata |
-| `src/api/routes.py` | Handlers for `/health`, `/model/info`, `/predict` |
-| `src/api/schemas.py` | Pydantic request/response models with input validation |
-
-#### Running the API
-
-**Local development (loads model from MLflow registry):**
-```bash
-source .venv/bin/activate
-uvicorn src.api.main:app --reload
-```
-
-**Docker (see Phase 4 — Docker below):**
-```bash
-python scripts/export_champion.py   # one-time export
-docker compose up
-```
-
-- API: http://localhost:8000  
-- Swagger UI: http://localhost:8000/docs
-
 ---
 
-### Phase 4 — Docker ✅
+### 🔍 Monitoramento
 
-**Goal:** containerise the API and MLflow UI so the full stack runs with a single command.
+**Objetivo:** Monitorar o modelo em produção em duas camadas complementares — métricas de infraestrutura e detecção de drift específica de ML.
 
-#### Architecture
+#### Camadas de monitoramento
 
-```
-docker compose up
-│
-├── mlflow  (python:3.13-slim)     port 5000  — experiment tracking UI
-│   └── mounts ./mlruns.db + ./mlruns  (read-only, for the UI)
-│
-└── api     (Dockerfile)           port 8000  — FastAPI prediction service
-    └── mounts ./models  (read-only, contains the exported champion model)
-```
-
-The API does **not** connect to the MLflow server at runtime. The champion model is pre-exported to `models/` and loaded from disk — no network dependency at inference time.
-
-#### Two loading modes
-
-| Mode | Trigger | Use case |
+| Camada | Ferramenta | O que rastreia |
 |---|---|---|
-| Registry | `MODEL_DIR` unset | Local dev — loads `@champion` from MLflow SQLite DB |
-| Local dir | `MODEL_DIR=/app/models` | Docker — loads from pre-exported `models/champion/` |
+| Infraestrutura | Prometheus + Grafana | Latência de requisições (p50/p95/p99), taxa de erros, throughput, RMSE do champion |
+| Métricas de ML | Evidently AI | Drift de predições, drift de features de entrada, qualidade dos dados |
+| Alertas | Alertas do Grafana | Pico de latência, alta taxa de erros, degradação do RMSE do modelo |
+| Relatórios de drift | HTML do Evidently | Relatório sob demanda comparando predições em produção com o conjunto de referência |
 
-Switching between them requires no code change — only the environment variable.
+#### Decisões de design
 
-#### Key files
+- **Monitoramento em duas camadas** — Prometheus/Grafana rastreiam o que a infraestrutura *está fazendo* (latência, erros, throughput); Evidently rastreia o que o *modelo está fazendo* (distribuição de entradas e saídas). Nenhum dos dois é suficiente sozinho.
+- **Middleware Prometheus** — um único middleware FastAPI intercepta todas as requisições e registra contagem + latência, mantendo os handlers de rota limpos. O endpoint `/metrics` é excluído da instrumentação para não poluir os dados.
+- **Registro de drift em tempo real** — cada chamada a `/predict` adiciona um registro em `data/predictions_log.jsonl` (quatro features: `last_close`, `predicted_close`, `price_mean`, `price_range`). Isso é best-effort; uma falha no registro nunca é exposta ao chamador.
+- **Dataset de referência** — o Evidently requer uma distribuição de referência estável. A referência é construída a partir das predições do modelo no **split de teste** (execute `scripts/build_reference.py` uma vez após cada promoção de champion). Usar predições do conjunto de teste em vez do conjunto de treino mantém a referência honesta: ela reflete a distribuição de saída real do modelo em dados não vistos.
+- **RMSE como proxy de drift** — o gauge Prometheus `model_rmse` (definido na inicialização a partir dos metadados do registry) fornece um sinal rápido e sempre disponível para a qualidade do modelo, sem necessitar de um relatório do Evidently. O threshold de alerta em 7,0 foi escolhido porque o challenger AttentionLSTM rejeitado obteve 8,17; qualquer valor acima de 7,0 justifica investigação.
+- **Provisionamento do Grafana** — datasource, dashboard e regras de alerta são todos provisionados via YAML na inicialização do container. O stack é totalmente reprodutível com `docker compose up`; nenhuma configuração manual pela UI é necessária.
 
-| File | Responsibility |
-|---|---|
-| `Dockerfile` | Multi-layer build: CPU torch → API deps → source code |
-| `docker-compose.yml` | Defines `mlflow` (UI) and `api` (inference) services |
-| `.dockerignore` | Excludes data, artifacts, venv, and notebooks from the build context |
-| `requirements.txt` | API runtime deps only (no CUDA torch, no dev extras) |
-| `scripts/export_champion.py` | Copies the `@champion` model from MLflow registry to `models/champion/` |
+#### Regras de alerta
 
-#### Running with Docker
-
-```bash
-# 1. Export the current champion model (re-run whenever champion changes)
-python scripts/export_champion.py
-
-# 2. Start both services
-docker compose up --build
-
-# API:          http://localhost:8000
-# Swagger UI:   http://localhost:8000/docs
-# MLflow UI:    http://localhost:5000
-```
-
----
-
-### Phase 5 — Monitoring ✅
-
-**Goal:** observe model health in production across two complementary layers — infrastructure metrics and ML-specific drift detection.
-
-#### Monitoring layers
-
-| Layer | Tool | What it tracks |
-|---|---|---|
-| Infrastructure | Prometheus + Grafana | Request latency (p50/p95/p99), error rate, throughput, champion RMSE |
-| ML metrics | Evidently AI | Prediction drift, input feature drift, data quality |
-| Alerting | Grafana alerts | Latency spike, high error rate, model RMSE degradation |
-| Drift reports | Evidently HTML | On-demand report comparing live predictions to test-set reference |
-
-#### Design decisions
-
-- **Two-layer monitoring** — Prometheus/Grafana track what the infrastructure *is doing* (latency, errors, throughput); Evidently tracks what the *model is doing* (distribution of inputs and outputs). Neither alone is sufficient.
-- **Prometheus middleware** — a single FastAPI middleware intercepts every request and records count + latency, keeping route handlers clean. The `/metrics` endpoint is excluded from instrumentation to avoid polluting the data.
-- **On-the-fly drift logging** — every `/predict` call appends a record to `data/predictions_log.jsonl` (four features: `last_close`, `predicted_close`, `price_mean`, `price_range`). This is best-effort; a failure to log never surfaces to the caller.
-- **Reference dataset** — Evidently requires a stable reference distribution. The reference is built from model predictions on the held-out **test split** (run `scripts/build_reference.py` once after each champion promotion). Using test-set predictions rather than training-set predictions keeps the reference honest: it reflects the model's actual output distribution on unseen data.
-- **RMSE as drift proxy** — the `model_rmse` Prometheus gauge (set at startup from registry metadata) provides a fast, always-available signal for model quality without requiring an Evidently report. The alert threshold of 7.0 is chosen because the rejected AttentionLSTM challenger scored 8.17; anything above 7.0 warrants investigation.
-- **Grafana provisioning** — datasource, dashboard, and alert rules are all provisioned via YAML at container start. The stack is fully reproducible with `docker compose up`; no manual UI configuration is needed.
-
-#### Alert rules
-
-| Alert | Condition | `for` | Severity |
+| Alerta | Condição | `for` | Severidade |
 |---|---|---|---|
-| High P95 Prediction Latency | p95 `/predict` latency > 1 s | 5 m | warning |
-| High API Error Rate | 5xx rate > 0.05 req/s | 2 m | critical |
-| Champion Model RMSE Degraded | `model_rmse` > 7.0 | 5 m | warning |
+| Latência P95 de Predição Alta | Latência p95 em `/predict` > 1 s | 5 min | warning |
+| Taxa de Erros da API Alta | Taxa de erros 5xx > 0,05 req/s | 2 min | critical |
+| RMSE do Modelo Champion Degradado | `model_rmse` > 7,0 | 5 min | warning |
 
-#### Key files
-
-| File | Responsibility |
-|---|---|
-| `src/monitoring/metrics.py` | Prometheus metric definitions (counter, histogram, gauge) |
-| `src/monitoring/drift.py` | Prediction logging, reference building, Evidently report generation |
-| `src/api/main.py` | HTTP middleware wiring metrics; `/metrics` scrape endpoint |
-| `src/api/routes.py` | `/monitoring/predictions` and `/monitoring/report` endpoints |
-| `scripts/build_reference.py` | One-shot script to build `data/reference_predictions.csv` from test split |
-| `docker/prometheus.yml` | Prometheus scrape config (target: `api:8000/metrics`, interval: 15 s) |
-| `docker/grafana/provisioning/datasources/prometheus.yml` | Auto-provisions the Prometheus datasource in Grafana |
-| `docker/grafana/provisioning/dashboards/api_dashboard.json` | 6-panel Grafana dashboard (request rate, error rate, latency, RMSE, ticker counts, price distribution) |
-| `docker/grafana/provisioning/alerting/alerts.yml` | Three provisioned alert rules (latency, error rate, RMSE) |
-
-#### Running the monitoring stack
+#### Acionando um relatório de drift
 
 ```bash
-# 1. Build the reference dataset (once per champion promotion)
-source .venv/bin/activate
-python scripts/build_reference.py
-
-# 2. Start the full stack
-python scripts/export_champion.py   # export champion to models/
-docker compose up --build
-
-# Services:
-#   API:          http://localhost:8000        (+ /docs, /metrics)
-#   Prometheus:   http://localhost:9090
-#   Grafana:      http://localhost:3000        (admin / admin)
-#   MLflow UI:    http://localhost:5000
-```
-
-#### Triggering a drift report
-
-```bash
-# Via API (requires ≥ 10 logged predictions and a built reference)
+# Via API (requer ≥ 10 predições registradas e referência construída)
 curl -X POST http://localhost:8000/monitoring/report
 
-# View recent logged predictions
+# Visualizar predições recentes registradas
 curl http://localhost:8000/monitoring/predictions?n=20
 
-# Reports are saved to reports/drift/drift_<timestamp>.html
+# Relatórios são salvos em reports/drift/drift_<timestamp>.html
 ```
 
 ---
 
-### Execution Order
-
-```
-Phase 1 (Data)  →  Phase 2 (LSTM)  →  Phase 3 (Registry)
-                                              ↓
-                              Phase 4 (API)  →  Phase 5 (Monitoring)
-```
-
-Phases 4 and 5 can be developed in parallel once Phase 3 produces a registered model.
-
----
-
-## Getting Started
-
-```bash
-# Clone the repository
-git clone <repo-url>
-cd tech-challenge-deep-learning-pipeline
-
-# Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-
-# Install all dependencies
-pip install -e ".[dev]"
-
-# --- Phase 1: Data Pipeline ---
-# Edit config/config.yaml to choose tickers and date range, then:
-python -m src.data.pipeline
-
-# --- Phase 2: Model Training ---
-python -m src.model.pipeline
-
-# --- Phase 4: API ---
-uvicorn src.api.main:app --reload
-
-# --- Full stack with Docker (Phases 4 + 5) ---
-python scripts/export_champion.py
-docker compose up --build
-```
-
----
-
-## Project Structure
+## 📁 Estrutura Detalhada do Código-Fonte
 
 ```
 src/
 ├── data/
-│   ├── ingest.py           # download raw stock data via yfinance
-│   └── preprocess.py       # normalization, sequence generation, train/val/test split
+│   ├── ingest.py           # download de dados brutos via yfinance
+│   └── preprocess.py       # normalização, geração de sequências, split treino/val/teste
 ├── model/
-│   ├── lstm.py             # LSTM model definition
-│   ├── train.py            # training loop + MLflow logging
-│   └── evaluate.py         # RMSE, MAE, MAPE, R², prediction plots
+│   ├── lstm.py             # definição dos modelos LSTM
+│   ├── train.py            # loop de treino + registro MLflow
+│   └── evaluate.py         # RMSE, MAE, MAPE, R², gráficos de predição
 ├── api/
-│   ├── main.py             # FastAPI app, lifespan, router registration
-│   ├── routes.py           # /health, /model/info, /predict, /monitoring/* endpoints
-│   └── schemas.py          # Pydantic request/response models
+│   ├── main.py             # app FastAPI, lifespan, registro de rotas
+│   ├── routes.py           # endpoints /health, /model/info, /predict, /monitoring/*
+│   └── schemas.py          # modelos Pydantic de requisição/resposta
 └── monitoring/
-    ├── metrics.py          # Prometheus metric definitions
-    └── drift.py            # prediction logging + Evidently AI drift reports
+    ├── metrics.py          # definições de métricas Prometheus
+    └── drift.py            # registro de predições + relatórios de drift Evidently AI
 
 docker/
-├── prometheus.yml          # scrape config (api:8000/metrics every 15 s)
+├── prometheus.yml          # config de scrape (api:8000/metrics a cada 15 s)
 └── grafana/
     └── provisioning/
         ├── datasources/
-        │   └── prometheus.yml      # auto-provisions Prometheus datasource
+        │   └── prometheus.yml      # provisiona automaticamente o datasource Prometheus
         ├── dashboards/
-        │   ├── provider.yml        # dashboard file provider config
-        │   └── api_dashboard.json  # 6-panel production dashboard
+        │   ├── provider.yml        # config do provedor de arquivos de dashboard
+        │   └── api_dashboard.json  # dashboard de produção com 6 painéis
         └── alerting/
-            └── alerts.yml          # 3 alert rules (latency, errors, RMSE)
+            └── alerts.yml          # 3 regras de alerta (latência, erros, RMSE)
 
 scripts/
-├── export_champion.py      # copies @champion from MLflow registry to models/
-└── build_reference.py      # builds data/reference_predictions.csv from test split
+├── export_champion.py      # copia @champion do registry MLflow para models/
+└── build_reference.py      # constrói data/reference_predictions.csv a partir do split de teste
 ```
+
+---
+
+## 🚀 Entregáveis
+
+- Descrição completa do projeto ✅
+- Diagrama visual do projeto ✅
+- Link do vídeo ✅
